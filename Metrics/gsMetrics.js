@@ -1,21 +1,16 @@
 import { SPEED_OF_LIGHT, SCALE } from '../utils/constants.js';
 
-/**
- * Classe pour collecter les métriques des liens Ground Station <-> Satellite
- * Collecte les événements (connect, handover, disconnect) et les échantillons de latence
- */
+// Collecte des métriques des liens Ground Station <-> Satellite
 class GSMetrics {
     constructor() {
-        this.groundStations = [];       // Liste des ground stations avec métadonnées
-        this.events = [];               // Liste des événements (connect, handover, disconnect)
-        this.timeline = new Map();      // Map<gsId, {satId, samples[]}>
-        this.timeOffset = 0;            // Décalage de temps pour normaliser à t=0
-        this.lastTrackingState = {};    // État de tracking précédent pour détecter les changements
+        this.groundStations = [];
+        this.events = [];
+        this.timeline = new Map();
+        this.timeOffset = 0;
+        this.lastTrackingState = {};
     }
 
-    /**
-     * Réinitialiser toutes les métriques
-     */
+    // Réinitialiser toutes les métriques
     reset() {
         this.groundStations = [];
         this.events = [];
@@ -24,40 +19,23 @@ class GSMetrics {
         this.lastTrackingState = {};
     }
 
-    /**
-     * Définir le décalage de temps
-     */
+    // Définir le décalage de temps de référence
     setTimeOffset(offset) {
         this.timeOffset = offset;
     }
 
-    /**
-     * Initialiser les ground stations depuis la liste existante
-     * @param {Array} stations - Liste des ground stations [{id, name, lat, lon}]
-     */
+    // Initialiser les ground stations
     initializeGroundStations(stations) {
         this.groundStations = stations.map(gs => ({
-            id: `gs${gs.id}`,
-            name: gs.name,
-            lat: gs.lat,
-            lon: gs.lon
+            id: `gs${gs.id}`, name: gs.name, lat: gs.lat, lon: gs.lon
         }));
 
-        // Initialiser les timelines vides
         for (const gs of this.groundStations) {
             this.timeline.set(gs.id, []);
         }
-
-        console.log(`GSMetrics: Initialized ${this.groundStations.length} ground stations`);
     }
 
-    /**
-     * Mettre à jour l'état de tracking et détecter les événements
-     * @param {Object} trackingState - État actuel du tracking {stationId: {trackedSatelliteIndex, lastHandoverTime}}
-     * @param {Array} stationMeshes - Meshes des stations pour récupérer les positions
-     * @param {Array} satellites - Tableau des satellites (THREE.Mesh)
-     * @param {number} currentTime - Temps actuel de simulation (secondes)
-     */
+    // Détecter les événements de connexion/handover/déconnexion et échantillonner les latences
     update(trackingState, stationMeshes, satellites, currentTime) {
         const relativeTime = currentTime - this.timeOffset;
 
@@ -67,105 +45,57 @@ class GSMetrics {
             const previousState = this.lastTrackingState[stationId];
             const previousSat = previousState?.trackedSatelliteIndex;
 
-            // Trouver le mesh de la station
             const stationMesh = stationMeshes.find(m => m.userData.stationId === parseInt(stationId));
             if (!stationMesh) continue;
 
             const stationPosition = stationMesh.children[0].position;
 
-            // Détecter les événements
             if (previousSat === null || previousSat === undefined) {
-                // Première connexion
                 if (currentSat !== null && currentSat !== undefined) {
                     const latency = this._calculateLatency(stationPosition, satellites[currentSat]);
-                    this.events.push({
-                        t: relativeTime,
-                        gsId: gsId,
-                        action: 'connect',
-                        satId: currentSat,
-                        latency_ms: latency
-                    });
-
-                    // Initialiser le timeline pour ce lien
+                    this.events.push({ t: relativeTime, gsId, action: 'connect', satId: currentSat, latency_ms: latency });
                     this._initTimelineEntry(gsId, currentSat, relativeTime, latency);
                 }
             } else if (currentSat !== previousSat) {
                 if (currentSat === null || currentSat === undefined) {
-                    // Déconnexion
-                    this.events.push({
-                        t: relativeTime,
-                        gsId: gsId,
-                        action: 'disconnect',
-                        satId: previousSat
-                    });
-
-                    // Finaliser le timeline précédent
+                    this.events.push({ t: relativeTime, gsId, action: 'disconnect', satId: previousSat });
                     this._finalizeTimelineEntry(gsId, previousSat, relativeTime);
                 } else {
-                    // Handover
                     const latency = this._calculateLatency(stationPosition, satellites[currentSat]);
-                    this.events.push({
-                        t: relativeTime,
-                        gsId: gsId,
-                        action: 'handover',
-                        fromSatId: previousSat,
-                        toSatId: currentSat,
-                        latency_ms: latency
-                    });
-
-                    // Finaliser l'ancien timeline et démarrer le nouveau
+                    this.events.push({ t: relativeTime, gsId, action: 'handover', fromSatId: previousSat, toSatId: currentSat, latency_ms: latency });
                     this._finalizeTimelineEntry(gsId, previousSat, relativeTime);
                     this._initTimelineEntry(gsId, currentSat, relativeTime, latency);
                 }
             }
 
-            // Ajouter un échantillon de latence si connecté
             if (currentSat !== null && currentSat !== undefined) {
                 const latency = this._calculateLatency(stationPosition, satellites[currentSat]);
                 this._addSample(gsId, currentSat, relativeTime, latency);
             }
         }
 
-        // Sauvegarder l'état actuel pour la prochaine itération
         this.lastTrackingState = JSON.parse(JSON.stringify(trackingState));
     }
 
-    /**
-     * Initialiser une entrée timeline pour un nouveau lien GS-satellite
-     * @private
-     */
+    // Initialiser une entrée timeline pour un nouveau lien GS-satellite
     _initTimelineEntry(gsId, satId, time, latency) {
         const entries = this.timeline.get(gsId) || [];
-        entries.push({
-            satId: satId,
-            startTime: time,
-            endTime: null,
-            samples: [{ t: time, latency_ms: latency }]
-        });
+        entries.push({ satId, startTime: time, endTime: null, samples: [{ t: time, latency_ms: latency }] });
         this.timeline.set(gsId, entries);
     }
 
-    /**
-     * Finaliser une entrée timeline (marquer la fin)
-     * @private
-     */
+    // Finaliser une entrée timeline
     _finalizeTimelineEntry(gsId, satId, endTime) {
         const entries = this.timeline.get(gsId) || [];
         const currentEntry = entries.find(e => e.satId === satId && e.endTime === null);
-        if (currentEntry) {
-            currentEntry.endTime = endTime;
-        }
+        if (currentEntry) currentEntry.endTime = endTime;
     }
 
-    /**
-     * Ajouter un échantillon de latence
-     * @private
-     */
+    // Ajouter un échantillon de latence à la timeline active
     _addSample(gsId, satId, time, latency) {
         const entries = this.timeline.get(gsId) || [];
         const currentEntry = entries.find(e => e.satId === satId && e.endTime === null);
         if (currentEntry) {
-            // Éviter les doublons (même timestamp)
             const lastSample = currentEntry.samples[currentEntry.samples.length - 1];
             if (!lastSample || lastSample.t !== time) {
                 currentEntry.samples.push({ t: time, latency_ms: latency });
@@ -173,58 +103,33 @@ class GSMetrics {
         }
     }
 
-    /**
-     * Calculer la latence entre une station et un satellite
-     * @private
-     */
+    // Calculer la latence entre une station et un satellite
     _calculateLatency(stationPosition, satellite) {
         if (!satellite) return 0;
-
         const satPosition = satellite.position;
-
-        // Convertir de l'échelle de visualisation aux km
         const dx = (stationPosition.x - satPosition.x) / SCALE;
         const dy = (stationPosition.y - satPosition.y) / SCALE;
         const dz = (stationPosition.z - satPosition.z) / SCALE;
-
-        const distance_km = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        return (distance_km / SPEED_OF_LIGHT) * 1000; // ms
+        return (Math.sqrt(dx * dx + dy * dy + dz * dz) / SPEED_OF_LIGHT) * 1000;
     }
 
-    /**
-     * Obtenir tous les événements
-     * @returns {Array} Liste des événements triés par temps
-     */
+    // Retourner les événements triés par temps
     getEvents() {
         return this.events.sort((a, b) => a.t - b.t);
     }
 
-    /**
-     * Obtenir le timeline formaté pour l'export
-     * @returns {Array} Liste des entrées timeline
-     */
+    // Retourner le timeline formaté pour l'export
     getTimeline() {
         const result = [];
-
         for (const [gsId, entries] of this.timeline) {
             for (const entry of entries) {
-                result.push({
-                    gsId: gsId,
-                    satId: entry.satId,
-                    startTime: entry.startTime,
-                    endTime: entry.endTime,
-                    samples: entry.samples
-                });
+                result.push({ gsId, satId: entry.satId, startTime: entry.startTime, endTime: entry.endTime, samples: entry.samples });
             }
         }
-
         return result;
     }
 
-    /**
-     * Obtenir des statistiques globales
-     * @returns {Object} Statistiques globales
-     */
+    // Retourner les statistiques globales
     getGlobalStats() {
         const events = this.getEvents();
         const timeline = this.getTimeline();
@@ -235,34 +140,21 @@ class GSMetrics {
 
         let totalSamples = 0;
         let totalLatency = 0;
-
         for (const entry of timeline) {
-            for (const sample of entry.samples) {
-                totalSamples++;
-                totalLatency += sample.latency_ms;
-            }
+            for (const sample of entry.samples) { totalSamples++; totalLatency += sample.latency_ms; }
         }
-
-        const avgLatency = totalSamples > 0 ? totalLatency / totalSamples : 0;
 
         return {
             totalGroundStations: this.groundStations.length,
             totalEvents: events.length,
-            connectEvents: connectEvents,
-            handoverEvents: handoverEvents,
-            disconnectEvents: disconnectEvents,
-            totalSamples: totalSamples,
-            avgLatency_ms: avgLatency
+            connectEvents, handoverEvents, disconnectEvents,
+            totalSamples,
+            avgLatency_ms: totalSamples > 0 ? totalLatency / totalSamples : 0
         };
     }
 
-    /**
-     * Obtenir la liste des ground stations
-     * @returns {Array} Liste des ground stations
-     */
-    getGroundStations() {
-        return this.groundStations;
-    }
+    // Retourner la liste des ground stations
+    getGroundStations() { return this.groundStations; }
 }
 
 export default GSMetrics;

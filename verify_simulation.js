@@ -1,4 +1,4 @@
-/**imulation.js
+/**Simulation.js
  * Tests complets de la simulation : positions satellites, Walker Delta,
  * stations sol, distances GS-satellite, et visibilité (ligne de vue).
  *
@@ -24,7 +24,7 @@ import { checkLineOfSight, calculateDistance } from './utils/raytracing.js';
 import { EARTH_RADIUS, SCALE, MAX_ISL_DISTANCE, GM } from './utils/constants.js';
 import ISLMetrics from './Metrics/islMetrics.js';
 
-// ─── Framework de test ────────────────────────────────────────────────────────
+// -- Framework de test ----------
 
 let passed = 0;
 let failed = 0;
@@ -51,7 +51,7 @@ function makeSat(x, y, z, index = 0) {
     return { position: new THREE.Vector3(x, y, z), userData: { index } };
 }
 
-// ─── Constantes locales ────────────────────────────────────────────────────────
+// -- Constantes locales ----------
 const R = EARTH_RADIUS;          // km
 const S = SCALE;                  // 0.001
 const PI = Math.PI;
@@ -61,10 +61,10 @@ const TOL_KM  = 1e-6;            // tolérance distance km
 const TOL_DEG = 0.01;            // tolérance angles lat/lon (degrés)
 const TOL_ELEV = 0.001;          // tolérance angle d'élévation (degrés)
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---
 // BLOC 1 : Mécanique orbitale (re-exportée depuis simulation/constellation.js)
-// ─────────────────────────────────────────────────────────────────────────────
-console.log("\n─── BLOC 1 : Mécanique orbitale ───");
+// ---
+console.log("\n-- BLOC 1 : Mécanique orbitale --");
 
 // T = 2π√(r³/GM) / 60
 // Pour alt=550 km : r = 6921 km → T = 2π√(6921³/398600.4418)/60 ≈ 95.502 min
@@ -116,10 +116,10 @@ check("Kepler : T(800km) > T(550km)",
 check("Kepler : v(800km) < v(550km)",
     calculateOrbitalVelocity(800) < calculateOrbitalVelocity(550), "loi de Kepler");
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---
 // BLOC 2 : Positions satellites — getSatellitePosition(alt, inc, raan, ta)
-// ─────────────────────────────────────────────────────────────────────────────
-console.log("\n─── BLOC 2 : Positions satellites ───");
+// ---
+console.log("\n-- BLOC 2 : Positions satellites --");
 
 // Formule de référence (tirée directement de constellation.js) :
 //   r3d  = (EARTH_RADIUS + alt) * SCALE
@@ -131,7 +131,7 @@ console.log("\n─── BLOC 2 : Positions satellites ───");
 const alt_ref = 550;
 const r3d = (R + alt_ref) * S;   // ≈ 6.921 Three.js units
 
-// ── 2.1 Invariant géométrique : ‖position‖ == r3d pour tout TA ──────────────
+// - 2.1 Invariant géométrique : ‖position‖ == r3d pour tout TA -------
 const testCases_norm = [
     [0,  0,   0  ],
     [90, 0,   0  ],
@@ -149,7 +149,7 @@ for (const [ta, inc, raan] of testCases_norm) {
     );
 }
 
-// ── 2.2 Cas canoniques avec valeurs calculées depuis la formule ─────────────
+// - 2.2 Cas canoniques avec valeurs calculées depuis la formule -------
 
 // TA=0, inc=0, raan=0 → (r3d, 0, 0)
 {
@@ -217,7 +217,7 @@ for (const [ta, inc, raan] of testCases_norm) {
     checkClose("TA=45, inc=0, raan=0 → z=r3d*sin45", pos.z, r3d * s45, TOL_POS);
 }
 
-// ── 2.3 Périodicité : pos(TA=0) == pos(TA=360) ──────────────────────────────
+// - 2.3 Périodicité : pos(TA=0) == pos(TA=360) ---------------
 {
     const p0   = getSatellitePosition(alt_ref, 55, 120, 0);
     const p360 = getSatellitePosition(alt_ref, 55, 120, 360);
@@ -226,7 +226,7 @@ for (const [ta, inc, raan] of testCases_norm) {
     checkClose("Périodicité TA : z(0°) = z(360°)", p0.z, p360.z, TOL_POS);
 }
 
-// ── 2.4 Symétrie RAAN+360 ───────────────────────────────────────────────────
+// - 2.4 Symétrie RAAN+360 --------
 {
     const p    = getSatellitePosition(alt_ref, 55, 75, 45);
     const p360 = getSatellitePosition(alt_ref, 55, 75 + 360, 45);
@@ -235,13 +235,13 @@ for (const [ta, inc, raan] of testCases_norm) {
     checkClose("Symétrie RAAN+360 : z", p.z, p360.z, TOL_POS);
 }
 
-// ── 2.5 Inclination = 0 → satellite dans plan équatorial (y = 0) ────────────
+// - 2.5 Inclination = 0 → satellite dans plan équatorial (y = 0) ------
 for (const ta of [0, 45, 90, 135, 180, 225, 270, 315]) {
     const pos = getSatellitePosition(alt_ref, 0, 0, ta);
     checkClose(`inc=0 → plan équatorial (TA=${ta}°, y=0)`, pos.y, 0, TOL_POS);
 }
 
-// ── 2.6 RAAN différents → orbites distinctes (positions différentes) ─────────
+// - 2.6 RAAN différents → orbites distinctes (positions différentes) -----
 {
     const p0   = getSatellitePosition(alt_ref, 55, 0,   90);
     const p90  = getSatellitePosition(alt_ref, 55, 90,  90);
@@ -252,7 +252,7 @@ for (const ta of [0, 45, 90, 135, 180, 225, 270, 315]) {
         p0.distanceTo(p180) > 0.01, `dist=${p0.distanceTo(p180).toFixed(3)}`);
 }
 
-// ── 2.7 Cohérence altitude : plus haut → plus loin du centre ────────────────
+// - 2.7 Cohérence altitude : plus haut → plus loin du centre --------
 {
     const pos_550 = getSatellitePosition(550, 0, 0, 0);
     const pos_800 = getSatellitePosition(800, 0, 0, 0);
@@ -264,10 +264,10 @@ for (const ta of [0, 45, 90, 135, 180, 225, 270, 315]) {
     checkClose("Rayon exact alt=800km", pos_800.length(), r_800, TOL_POS);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---
 // BLOC 3 : Walker Delta — paramètres RAAN et anomalie vraie
-// ─────────────────────────────────────────────────────────────────────────────
-console.log("\n─── BLOC 3 : Paramètres Walker Delta ───");
+// ---
+console.log("\n-- BLOC 3 : Paramètres Walker Delta --");
 
 // Dans createConstellation, les paramètres Walker Delta sont :
 //   RAAN[p]   = p * 360 / numPlanes
@@ -284,7 +284,7 @@ function walkerTA(s, p, numSats, numPlanes, phase) {
     return (s * 360 / satsPerPlane) + (p * phase * 360 / numSats);
 }
 
-// ── 3.1 Walker 8/2/0 : espacement RAAN 180°, espacement TA 90° ──────────────
+// - 3.1 Walker 8/2/0 : espacement RAAN 180°, espacement TA 90° -------
 {
     const numSats = 8, numPlanes = 2, phase = 0, inc = 55;
     // Plan 0 : RAAN=0°, sats à 0°, 90°, 180°, 270°
@@ -318,7 +318,7 @@ function walkerTA(s, p, numSats, numPlanes, phase) {
     checkClose("Walker 8/2/0 : distances égales entre sats (d12=d23)", d12, d23, TOL_POS);
 }
 
-// ── 3.2 Walker 24/6/1 : espacement RAAN 60°, phasage de 15° par plan ────────
+// - 3.2 Walker 24/6/1 : espacement RAAN 60°, phasage de 15° par plan ----
 {
     const numSats = 24, numPlanes = 6, phase = 1;
 
@@ -338,7 +338,7 @@ function walkerTA(s, p, numSats, numPlanes, phase) {
     checkClose("Walker 24/6/1 : TA sat0 plan 2 = 30°", ta_p2_s0, 30, 1e-9, "°");
 }
 
-// ── 3.3 Symétrie Walker : satellites du même plan ont même norme ─────────────
+// - 3.3 Symétrie Walker : satellites du même plan ont même norme -------
 {
     const numSats = 8, numPlanes = 2, phase = 0, inc = 55;
     const r_expected = r3d;
@@ -355,10 +355,10 @@ function walkerTA(s, p, numSats, numPlanes, phase) {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---
 // BLOC 4 : Positions stations sol — cartesianToLatLon
-// ─────────────────────────────────────────────────────────────────────────────
-console.log("\n─── BLOC 4 : Positions stations sol ───");
+// ---
+console.log("\n-- BLOC 4 : Positions stations sol --");
 
 // latLonToCartesian (formule privée, recalculée ici pour obtenir les coords 3D) :
 //   phi   = (90 - lat) * PI/180
@@ -411,7 +411,7 @@ for (const { name, lat, lon } of gs_cases) {
     }
 }
 
-// ── 4.1 Invariant : distance au centre == EARTH_RADIUS ────────────────────────
+// - 4.1 Invariant : distance au centre == EARTH_RADIUS ------------
 for (const { name, lat, lon } of gs_cases.slice(0, 8)) {
     const p3d = latLon_to_3D(lat, lon);
     // Le rayon en km = √((x/S)² + (y/S)² + (z/S)²)
@@ -419,7 +419,7 @@ for (const { name, lat, lon } of gs_cases.slice(0, 8)) {
     checkClose(`GS distance centre = R : ${name}`, r_km, R, 1e-6, " km");
 }
 
-// ── 4.2 Altitude : position avec altitude > position sans altitude ────────────
+// - 4.2 Altitude : position avec altitude > position sans altitude ------
 {
     const p0   = latLon_to_3D(48.85, 2.35, 0);
     const p550 = latLon_to_3D(48.85, 2.35, 550);
@@ -431,14 +431,14 @@ for (const { name, lat, lon } of gs_cases.slice(0, 8)) {
         (r550 - r0) / S, 550, 1e-6, " km");
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---
 // BLOC 5 : Distance GS-satellite — calculateGSToSatelliteDistance
-// ─────────────────────────────────────────────────────────────────────────────
-console.log("\n─── BLOC 5 : Distance GS-satellite ───");
+// ---
+console.log("\n-- BLOC 5 : Distance GS-satellite --");
 
 // La fonction divise (dx,dy,dz) par SCALE puis calcule la norme euclidienne.
 
-// ── 5.1 Satellite directement au-dessus de la station ─────────────────────────
+// - 5.1 Satellite directement au-dessus de la station -------------
 // GS à la surface (équateur, Greenwich) : pos = (R*S, 0, 0)
 // Sat à 550km de haut, exactement au-dessus : pos = ((R+550)*S, 0, 0)
 // Distance attendue = 550 km
@@ -449,14 +449,14 @@ console.log("\n─── BLOC 5 : Distance GS-satellite ───");
         calculateGSToSatelliteDistance(gsPos, satPos), 550, TOL_KM, " km");
 }
 
-// ── 5.2 Distance nulle (même position) ───────────────────────────────────────
+// - 5.2 Distance nulle (même position) --
 {
     const pos = { x: 1.234, y: 5.678, z: -3.456 };
     checkClose("Distance GS-sat : même position = 0",
         calculateGSToSatelliteDistance(pos, pos), 0, TOL_KM, " km");
 }
 
-// ── 5.3 Cas 3D connu ─────────────────────────────────────────────────────────
+// - 5.3 Cas 3D connu -----------
 // GS à (R*S, 0, 0), sat à (0, (R+550)*S, 0)
 // dx = R, dy = R+550, dz = 0  (en km)
 // dist = √(R² + (R+550)²) km
@@ -468,7 +468,7 @@ console.log("\n─── BLOC 5 : Distance GS-satellite ───");
         calculateGSToSatelliteDistance(gsPos, satPos), expected, TOL_KM, " km");
 }
 
-// ── 5.4 Distance sat réaliste (même plan, décalé de 90°) ─────────────────────
+// - 5.4 Distance sat réaliste (même plan, décalé de 90°) -----------
 // Sat 1 à (r3d, 0, 0), Sat 2 à (0, 0, r3d) [inclination 0, RAAN 0]
 // distance = r3d * √2 km
 {
@@ -479,7 +479,7 @@ console.log("\n─── BLOC 5 : Distance GS-satellite ───");
         calculateGSToSatelliteDistance(pos1, pos2), expected_km, TOL_KM, " km");
 }
 
-// ── 5.5 Symétrie de la distance ────────────────────────────────────────────────
+// - 5.5 Symétrie de la distance ------
 {
     const p1 = getSatellitePosition(alt_ref, 55, 0,   45);
     const p2 = getSatellitePosition(alt_ref, 55, 180, 45);
@@ -489,7 +489,7 @@ console.log("\n─── BLOC 5 : Distance GS-satellite ───");
         TOL_KM);
 }
 
-// ── 5.6 Distance Sat → Sat via calculateDistance (raytracing) ────────────────
+// - 5.6 Distance Sat → Sat via calculateDistance (raytracing) --------
 {
     const sat1 = makeSat(r3d, 0, 0);
     const sat2 = makeSat(0, 0, r3d);
@@ -498,10 +498,10 @@ console.log("\n─── BLOC 5 : Distance GS-satellite ───");
         calculateDistance(sat1, sat2), expected_km, TOL_KM, " km");
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---
 // BLOC 6 : Visibilité / Ligne de vue — checkLineOfSight
-// ─────────────────────────────────────────────────────────────────────────────
-console.log("\n─── BLOC 6 : Visibilité (ligne de vue) ───");
+// ---
+console.log("\n-- BLOC 6 : Visibilité (ligne de vue) --");
 
 // checkLineOfSight renvoie false si :
 //   (a) distance > MAX_ISL_DISTANCE * SCALE
@@ -511,7 +511,7 @@ const earthR3d = R * S;            // rayon Terre en Three.js units
 const sat_alt  = 550;
 const r_sat    = (R + sat_alt) * S;
 
-// ── 6.1 Distance > MAX_ISL_DISTANCE → pas visible ─────────────────────────────
+// - 6.1 Distance > MAX_ISL_DISTANCE → pas visible ---------------
 // MAX_ISL_DISTANCE = 5000 km → en 3D = 5.0 units
 {
     const far = MAX_ISL_DISTANCE * S * 1.1; // 10% au-delà
@@ -521,7 +521,7 @@ const r_sat    = (R + sat_alt) * S;
         !checkLineOfSight(sat1, sat2), `dist=${(far/S).toFixed(0)}km`);
 }
 
-// ── 6.2 Deux sats proches et côtés identiques → visible ──────────────────────
+// - 6.2 Deux sats proches et côtés identiques → visible -----------
 // Deux sats à 20° d'écart : d = 2*r*sin(10°) ≈ 2*6921*0.1736 ≈ 2403 km < MAX_ISL
 {
     const pos1 = getSatellitePosition(alt_ref, 0, 0, 0);
@@ -533,7 +533,7 @@ const r_sat    = (R + sat_alt) * S;
         checkLineOfSight(sat1, sat2), `${dist_km.toFixed(0)} km`);
 }
 
-// ── 6.3 Sats sur côtés opposés de la Terre → occlusion ────────────────────────
+// - 6.3 Sats sur côtés opposés de la Terre → occlusion ------------
 {
     // Sat 1 à (r_sat, 0, 0), Sat 2 à (-r_sat, 0, 0)
     // La ligne passe par le centre de la Terre → occluded
@@ -545,7 +545,7 @@ const r_sat    = (R + sat_alt) * S;
         !checkLineOfSight(sat1, sat2), "distance ou occlusion");
 }
 
-// ── 6.4 Sats dans MAX_ISL mais occlusion par la Terre ────────────────────────
+// - 6.4 Sats dans MAX_ISL mais occlusion par la Terre ------------
 // On place deux sats de part et d'autre de la Terre mais à moins de 5000km l'un de l'autre
 // Alt très basse fictive pour forcer l'occlusion :
 // Sat1 à (earthR3d*1.01, 0, 0), Sat2 à (-earthR3d*1.01, 0, 0)
@@ -571,7 +571,7 @@ const r_sat    = (R + sat_alt) * S;
         `dist=${dist_km.toFixed(0)}km ou occlusion`);
 }
 
-// ── 6.5 GS→satellite : satellite à l'horizon → LOS selon élévation ────────────
+// - 6.5 GS→satellite : satellite à l'horizon → LOS selon élévation ------
 // On vérifie que checkLineOfSight fonctionne depuis une position GS
 // GS à la surface, sat directement au-dessus
 {
@@ -586,7 +586,7 @@ const r_sat    = (R + sat_alt) * S;
         typeof los === 'boolean', `résultat=${los}`);
 }
 
-// ── 6.6 Réflexivité : LOS(A,B) == LOS(B,A) ──────────────────────────────────
+// - 6.6 Réflexivité : LOS(A,B) == LOS(B,A) -----------------
 {
     const pos1 = getSatellitePosition(alt_ref, 55, 0, 30);
     const pos2 = getSatellitePosition(alt_ref, 55, 0, 40);
@@ -598,11 +598,11 @@ const r_sat    = (R + sat_alt) * S;
         `LOS(A→B)=${los_12}, LOS(B→A)=${los_21}`);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---
 // BLOC 7 : Géométrie d'élévation — angle entre GS et satellite
 // (calculateElevation est privée → on vérifie la géométrie directement)
-// ─────────────────────────────────────────────────────────────────────────────
-console.log("\n─── BLOC 7 : Géométrie d'élévation ───");
+// ---
+console.log("\n-- BLOC 7 : Géométrie d'élévation --");
 
 // Réimplémentation locale de calculateElevation (formule identique à groundStations.js)
 // Utilisée uniquement pour calculer des valeurs ATTENDUES dans ce bloc.
@@ -624,7 +624,7 @@ function localElevation(stationPos, satPos) {
     return Math.acos(Math.max(-1, Math.min(1, cosAngle))) * 180 / PI - 90;
 }
 
-// ── 7.1 Satellite directement au-dessus → élévation = 90° ────────────────────
+// - 7.1 Satellite directement au-dessus → élévation = 90° ----------
 {
     // GS à (R*S, 0, 0), sat à ((R+550)*S, 0, 0) → toSat = (1, 0, 0), stNorm = (-1, 0, 0)
     // cosAngle = -1 → acos(-1) = 180° - 90° = 90° → élévation = 90°
@@ -634,7 +634,7 @@ function localElevation(stationPos, satPos) {
     checkClose("Élévation : sat directement au-dessus = 90°", elev, 90, TOL_ELEV, "°");
 }
 
-// ── 7.2 Satellite à la tangente (horizon géométrique) → élévation ≈ 0° ──────
+// - 7.2 Satellite à la tangente (horizon géométrique) → élévation ≈ 0° ---
 // Le satellite est dans le plan tangent à la surface au niveau du GS
 // GS à (R*S, 0, 0), sat à (R*S, r3d-R*S, 0) → toSat = (0, 1, 0), stNorm = (-1, 0, 0)
 // cosAngle = 0 → acos(0) = 90° → élévation = 0°
@@ -645,7 +645,7 @@ function localElevation(stationPos, satPos) {
     checkClose("Élévation : sat à 90° du zénith = 0°", elev, 0, TOL_ELEV, "°");
 }
 
-// ── 7.3 Satellite "sous l'horizon" → élévation négative ──────────────────────
+// - 7.3 Satellite "sous l'horizon" → élévation négative -----------
 {
     const gsPos  = new THREE.Vector3(R * S, 0, 0);
     // Sat en dessous du plan tangent (légèrement derrière l'horizon)
@@ -655,7 +655,7 @@ function localElevation(stationPos, satPos) {
         elev < 5, `${elev.toFixed(2)}°`);
 }
 
-// ── 7.4 Symétrie de l'élévation ────────────────────────────────────────────
+// - 7.4 Symétrie de l'élévation ----
 // Deux sats symétriques par rapport au zénith du GS → même élévation
 {
     const gsPos   = new THREE.Vector3(R * S, 0, 0);
@@ -666,7 +666,7 @@ function localElevation(stationPos, satPos) {
     checkClose("Symétrie élévation (sats symétriques)", elev1, elev2, TOL_ELEV, "°");
 }
 
-// ── 7.5 Élévation croissante → sat plus proche du zénith ─────────────────────
+// - 7.5 Élévation croissante → sat plus proche du zénith -----------
 {
     const gsPos  = new THREE.Vector3(R * S, 0, 0);
     const satA   = new THREE.Vector3((R + 550) * S, 500 * S, 0);  // loin du zénith
@@ -677,10 +677,10 @@ function localElevation(stationPos, satPos) {
         elevB > elevA, `elevA=${elevA.toFixed(2)}°, elevB=${elevB.toFixed(2)}°`);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---
 // BLOC 8 : Topologie ISL — ISLMetrics.generateISLPairs
-// ─────────────────────────────────────────────────────────────────────────────
-console.log("\n─── BLOC 8 : Topologie ISL ───");
+// ---
+console.log("\n-- BLOC 8 : Topologie ISL --");
 
 function generateISLTopology(numSats, numPlanes, phase = 0) {
     const isl = new ISLMetrics();
@@ -688,7 +688,7 @@ function generateISLTopology(numSats, numPlanes, phase = 0) {
     return isl.islPairs;
 }
 
-// ── 8.1 Comptes par configuration ────────────────────────────────────────────
+// - 8.1 Comptes par configuration ----
 // Walker T/P : intra = T, inter = T (anneau complet × plans)
 {
     const links = generateISLTopology(8, 2);
@@ -708,7 +708,7 @@ function generateISLTopology(numSats, numPlanes, phase = 0) {
     check("ISL 24/6 : total = 48",     links.length === 48, `got ${links.length}`);
 }
 
-// ── 8.2 Propriétés structurelles (64/8) ──────────────────────────────────────
+// - 8.2 Propriétés structurelles (64/8) -
 {
     const numSats = 64;
     const links = generateISLTopology(numSats, 8);
@@ -730,7 +730,7 @@ function generateISLTopology(numSats, numPlanes, phase = 0) {
         `${outOfRange.length} liens hors plage`);
 }
 
-// ── 8.3 Types valides ─────────────────────────────────────────────────────────
+// - 8.3 Types valides -----------
 {
     const links = generateISLTopology(24, 6);
     const validTypes = new Set(['intra-plane', 'inter-plane']);
@@ -739,9 +739,9 @@ function generateISLTopology(numSats, numPlanes, phase = 0) {
         `${badTypes.length} types invalides`);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---
 // RAPPORT FINAL
-// ─────────────────────────────────────────────────────────────────────────────
+// ---
 
 const BLOCS = [
     { label: "Mécanique orbitale",         prefix: ["Période", "Vitesse", "Cohérence", "Kepler"] },
@@ -790,7 +790,7 @@ if (unclassified.length > 0) {
     totalFail += unclassified.filter(r => !r.ok).length;
 }
 
-console.log("\n" + "─".repeat(60));
+console.log("\n" + "-".repeat(60));
 console.log(`  TOTAL : ${totalPass}/${totalPass + totalFail} tests passés`);
 if (totalFail > 0) {
     console.log(`\n  ÉCHECS DÉTAILLÉS :`);

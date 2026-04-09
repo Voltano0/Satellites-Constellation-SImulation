@@ -10,12 +10,10 @@ import { handleStationsFileImport, handleConstellationFileImport } from './impor
 import MetricsCollector from '../Metrics/metricsCollector.js';
 import { downloadISLGSMininet } from '../Metrics/exporters.js';
 
-// Variables globales
 let scene, camera, renderer, controls;
 let simulationTime = 0;
 let metricsCollector = null;
 
-// Paramètres de la constellation
 let params = {
     altitude: 550,
     inclination: 55,
@@ -32,36 +30,26 @@ let params = {
     satelliteSize: 0.30
 };
 
-// Initialisation
+// Initialisation de la scène et des contrôles
 function init() {
-    // Créer la scène
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x000000);
 
-    // Créer la caméra
-    camera = new THREE.PerspectiveCamera(
-        60,
-        window.innerWidth / window.innerHeight,
-        0.1,
-        100000
-    );
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100000);
     camera.position.set(50, 30, 50);
 
-    // Créer le renderer
     const container = document.getElementById('canvas-container');
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
     container.appendChild(renderer.domElement);
 
-    // Contrôles de la caméra
     controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
     controls.minDistance = 10;
     controls.maxDistance = 200;
 
-    // Ajouter les lumières
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambientLight);
 
@@ -69,41 +57,50 @@ function init() {
     directionalLight.position.set(50, 50, 50);
     scene.add(directionalLight);
 
-    // Créer la Terre
     createEarth(scene);
-
-    // Ajouter les étoiles
     createStars(scene);
-
-    // Créer la constellation initiale
     createConstellation(scene, params);
 
-    // Mettre à jour la grille de visualisation
     updateSatelliteGrid(params, (satIndex) => {
         highlightSatellite(satIndex, showSatelliteInfo);
     });
 
-    // Gérer le redimensionnement
     window.addEventListener('resize', onWindowResize);
 
-    // Connecter les contrôles
     setupControls();
-
-    // Initialiser la liste des stations
     updateGroundStationList();
 
-    // Initialiser le collecteur de métriques
     metricsCollector = new MetricsCollector();
     setupMetricsControls();
 
-    // Mettre à jour l'affichage de l'intervalle de collecte
-    document.getElementById('sampling-interval-value').textContent = DEFAULT_SAMPLING_INTERVAL;
+    const samplingSlider = document.getElementById('sampling-interval');
+    const samplingDisplay = document.getElementById('sampling-interval-value');
+    const samplingEstimate = document.getElementById('sampling-samples-estimate');
 
-    // Démarrer l'animation
+    function updateSamplingEstimate() {
+        const interval = parseInt(samplingSlider.value);
+        const useTerrestrial = document.getElementById('period-terrestrial').checked;
+        const orbitalPeriod = getOrbitalPeriod();
+        const durationS = useTerrestrial ? 86164 : (orbitalPeriod > 0 ? orbitalPeriod * 60 : 5700);
+        samplingEstimate.textContent = `~${Math.floor(durationS / interval)} échantillons/lien`;
+    }
+
+    samplingSlider.addEventListener('input', () => {
+        samplingDisplay.textContent = samplingSlider.value;
+        updateSamplingEstimate();
+    });
+
+    document.querySelectorAll('input[name="collection-period"]').forEach(r =>
+        r.addEventListener('change', updateSamplingEstimate)
+    );
+
+    samplingDisplay.textContent = DEFAULT_SAMPLING_INTERVAL;
+    updateSamplingEstimate();
+
     animate();
 }
 
-// Animation principale
+// Boucle d'animation principale
 let lastTime = 0;
 let frameCount = 0;
 let fpsTime = 0;
@@ -115,7 +112,6 @@ function animate() {
     const deltaTime = (currentTime - lastTime) / 1000;
     lastTime = currentTime;
 
-    // Calculer les FPS
     frameCount++;
     fpsTime += deltaTime;
     if (fpsTime >= 1) {
@@ -124,67 +120,42 @@ function animate() {
         fpsTime = 0;
     }
 
-    // Mettre à jour les satellites
     if (params.animate) {
         updateSatellites(deltaTime, params.speedFactor);
 
-        // Mettre à jour les liens voisins si activés
-        if (params.showNeighborLinks) {
-            updateNeighborLinks(scene);
-        }
-    }
+        if (params.showNeighborLinks) updateNeighborLinks(scene);
 
-    // Mettre à jour le temps de simulation (accéléré par speedFactor)
-    if (params.animate) {
         simulationTime += deltaTime * params.speedFactor;
-    }
-
-    // Mettre à jour les infos du satellite sélectionné en temps réel
-    if (getSelectedSatelliteIndex() !== -1) {
-        updateSelectedSatelliteInfo(params);
-    }
-
-    // Rotation de la Terre à vitesse réelle (accélérée par speedFactor)
-    if (params.animate) {
         rotateEarth(deltaTime, params.speedFactor);
-    }
-
-    // Mettre à jour les positions des stations au sol (suivent la Terre)
-    if (params.animate) {
         updateGroundStations(deltaTime, params.speedFactor);
     }
 
-    // Mettre à jour les liens dynamiques ground-satellite si activés
+    if (getSelectedSatelliteIndex() !== -1) updateSelectedSatelliteInfo(params);
+
     if (params.showGroundScope) {
         const satellites = getSatellites();
         updateGroundSatelliteLinks(scene, satellites, simulationTime);
 
-        // Mettre à jour l'affichage des stations toutes les 60 frames (~1 seconde)
-        if (frameCount % 60 === 0) {
-            updateGroundStationList();
-        }
+        if (frameCount % 60 === 0) updateGroundStationList();
     }
 
-    // Mettre à jour la collecte de métriques si elle est active
     if (metricsCollector && metricsCollector.isCollecting) {
-        const satellites = getSatellites();
-        metricsCollector.update(satellites, simulationTime);
+        metricsCollector.update(getSatellites(), simulationTime);
     }
 
     controls.update();
     renderer.render(scene, camera);
 }
 
-// Gérer le redimensionnement de la fenêtre
+// Redimensionnement de la fenêtre
 function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-// Configurer les contrôles de l'interface
+// Contrôles de l'interface utilisateur
 function setupControls() {
-    // Sliders normaux (sans numSats, on le gère séparément)
     const sliders = ['altitude', 'inclination', 'phase'];
     sliders.forEach(id => {
         const slider = document.getElementById(id);
@@ -196,7 +167,6 @@ function setupControls() {
         });
     });
 
-    // Sliders numSats et numPlanes avec synchronisation
     const numSatsSlider = document.getElementById('numSats');
     const numSatsDisplay = document.getElementById('numSats-value');
     const numPlanesSlider = document.getElementById('numPlanes');
@@ -204,24 +174,19 @@ function setupControls() {
     const phaseSlider = document.getElementById('phase');
     const phaseDisplay = document.getElementById('phase-value');
 
-    // Fonction pour ajuster numSats au multiple le plus proche de numPlanes
     function adjustNumSatsToMultiple(numSats, numPlanes) {
         const satsPerPlane = Math.round(numSats / numPlanes);
-        return Math.max(numPlanes, satsPerPlane * numPlanes); // Minimum 1 satellite par plan
+        return Math.max(numPlanes, satsPerPlane * numPlanes);
     }
 
-    // Fonction pour mettre à jour l'affichage du nombre de satellites
     function updateNumSatsDisplay(numSats, numPlanes) {
-        const satsPerPlane = numSats / numPlanes;
-        numSatsDisplay.textContent = `${numSats} (${satsPerPlane} sat/plan)`;
+        numSatsDisplay.textContent = `${numSats} (${numSats / numPlanes} sat/plan)`;
     }
 
-    // Fonction pour ajuster le max de phase
     function updatePhaseMax(numPlanes) {
         const maxPhase = numPlanes - 1;
         phaseSlider.max = maxPhase;
 
-        // Si la phase actuelle dépasse le nouveau max, l'ajuster
         if (params.phase > maxPhase) {
             params.phase = maxPhase;
             phaseSlider.value = maxPhase;
@@ -229,49 +194,37 @@ function setupControls() {
         }
     }
 
-    // Initialiser le max de phase au chargement
     updatePhaseMax(params.numPlanes);
-
-    // Initialiser l'affichage du nombre de satellites au chargement
     updateNumSatsDisplay(params.numSats, params.numPlanes);
 
-    // Listener pour numSats - ajuste au multiple de numPlanes
     numSatsSlider.addEventListener('input', (e) => {
-        let numSats = parseFloat(e.target.value);
-        const adjustedNumSats = adjustNumSatsToMultiple(numSats, params.numPlanes);
-
+        const adjustedNumSats = adjustNumSatsToMultiple(parseFloat(e.target.value), params.numPlanes);
         params.numSats = adjustedNumSats;
         numSatsSlider.value = adjustedNumSats;
         updateNumSatsDisplay(adjustedNumSats, params.numPlanes);
     });
 
-    // Listener pour numPlanes - ajuste numSats et phase
     numPlanesSlider.addEventListener('input', (e) => {
         const numPlanes = parseFloat(e.target.value);
         params.numPlanes = numPlanes;
         numPlanesDisplay.textContent = e.target.value;
 
-        // Ajuster le max de phase à numPlanes - 1
         updatePhaseMax(numPlanes);
 
-        // Ajuster numSats pour rester un multiple
         const adjustedNumSats = adjustNumSatsToMultiple(params.numSats, numPlanes);
         params.numSats = adjustedNumSats;
         numSatsSlider.value = adjustedNumSats;
         updateNumSatsDisplay(adjustedNumSats, numPlanes);
     });
 
-    // Slider pour la vitesse de simulation (avec mapping spécial)
     const speedSlider = document.getElementById('speedFactor');
     const speedDisplay = document.getElementById('speedFactor-value');
 
     speedSlider.addEventListener('input', (e) => {
-        const index = parseInt(e.target.value);
-        params.speedFactor = SPEED_FACTORS[index];
+        params.speedFactor = SPEED_FACTORS[parseInt(e.target.value)];
         speedDisplay.textContent = params.speedFactor;
     });
 
-    // Slider pour la taille des satellites
     const satelliteSizeSlider = document.getElementById('satelliteSize');
     const satelliteSizeDisplay = document.getElementById('satelliteSize-value');
 
@@ -279,20 +232,16 @@ function setupControls() {
         params.satelliteSize = parseFloat(e.target.value);
         satelliteSizeDisplay.textContent = params.satelliteSize.toFixed(2);
 
-        // Mettre à jour la taille de tous les satellites existants
-        const satellites = getSatellites();
-        satellites.forEach(sat => {
-            sat.scale.set(1, 1, 1); // Reset au cas où un satellite serait mis en surbrillance
+        getSatellites().forEach(sat => {
+            sat.scale.set(1, 1, 1);
             sat.geometry.dispose();
             sat.geometry = new THREE.SphereGeometry(params.satelliteSize, 16, 16);
         });
     });
 
-    // Checkboxes
     document.getElementById('showOrbits').addEventListener('change', (e) => {
         params.showOrbits = e.target.checked;
-        const orbits = getOrbits();
-        orbits.forEach(orbit => orbit.visible = e.target.checked);
+        getOrbits().forEach(orbit => orbit.visible = e.target.checked);
     });
 
     document.getElementById('showLinks').addEventListener('change', (e) => {
@@ -316,11 +265,7 @@ function setupControls() {
     document.getElementById('showGroundScope').addEventListener('change', (e) => {
         params.showGroundScope = e.target.checked;
         toggleGroundScope(e.target.checked);
-
-        // Nettoyer les liens si désactivé
-        if (!e.target.checked) {
-            clearGroundSatelliteLinks(scene);
-        }
+        if (!e.target.checked) clearGroundSatelliteLinks(scene);
     });
 
     document.getElementById('animate').addEventListener('change', (e) => {
@@ -345,7 +290,6 @@ function setupControls() {
         document.getElementById('ground-stations').style.display = e.target.checked ? 'block' : 'none';
     });
 
-    // Bouton de mise à jour
     document.getElementById('updateBtn').addEventListener('click', () => {
         createConstellation(scene, params);
         updateSatelliteGrid(params, (satIndex) => {
@@ -354,13 +298,12 @@ function setupControls() {
     });
 }
 
-// Configurer les contrôles de collecte de métriques
+// Contrôles du panneau de collecte de métriques
 function setupMetricsControls() {
     const startBtn = document.getElementById('start-collection-btn');
     const exportMininetBtn = document.getElementById('export-mininet-btn');
     const progressDiv = document.getElementById('collection-progress');
 
-    // Bouton démarrer la collecte
     startBtn.addEventListener('click', () => {
         if (!metricsCollector.isCollecting) {
             const orbitalPeriod = getOrbitalPeriod();
@@ -378,15 +321,17 @@ function setupMetricsControls() {
             };
 
             const groundStations = getGroundStations();
+            const useTerrestrialPeriod = document.getElementById('period-terrestrial').checked;
+            metricsCollector.samplingInterval = parseInt(document.getElementById('sampling-interval').value);
+
             const gsOptions = {
                 includeGroundStations: groundStations.length > 0,
                 groundStations: groundStations,
                 groundStationMeshes: getGroundStationMeshes(),
                 getTrackingState: getStationTrackingState,
-                useGroundTrackPeriod: true
+                useGroundTrackPeriod: useTerrestrialPeriod
             };
 
-            // Activer automatiquement le scope GS si des stations sont présentes
             if (gsOptions.includeGroundStations && !params.showGroundScope) {
                 params.showGroundScope = true;
                 document.getElementById('showGroundScope').checked = true;
@@ -401,7 +346,6 @@ function setupMetricsControls() {
         }
     });
 
-    // Réactiver les boutons quand la collecte est terminée
     const originalOnComplete = metricsCollector.onCollectionComplete.bind(metricsCollector);
     metricsCollector.onCollectionComplete = function() {
         originalOnComplete();
@@ -410,7 +354,6 @@ function setupMetricsControls() {
         exportMininetBtn.disabled = false;
     };
 
-    // Bouton d'export unique
     exportMininetBtn.addEventListener('click', () => {
         const constellation = {
             numSats: params.numSats,
@@ -424,21 +367,18 @@ function setupMetricsControls() {
             metricsCollector.gsMetrics,
             constellation,
             getOrbitalPeriod(),
-            getGroundStations()
+            getGroundStations(),
+            metricsCollector.collectionDuration,
+            metricsCollector.targetOrbitalPeriods,
+            metricsCollector.samplingInterval
         );
     });
 }
 
-// Exposer les fonctions d'import pour l'HTML
 window.handleStationsFileImport = (event) => handleStationsFileImport(event, scene);
 window.handleConstellationFileImport = (event) => handleConstellationFileImport(event, scene, params);
-
-// Rendre les fonctions globales pour les appels depuis HTML
 window.addGroundStation = () => addGroundStation(scene);
 window.removeGroundStation = (stationId) => removeGroundStation(scene, stationId);
 window.closeSatelliteInfo = closeSatelliteInfo;
 
-// Démarrer l'application
 init();
-
-// Les panels sont maintenant positionnés en CSS - plus besoin de draggable

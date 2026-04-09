@@ -414,6 +414,27 @@
             line-height: 1.4;
         }
 
+        .metrics-period-selector {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 12px;
+            font-size: 12px;
+        }
+
+        .period-option {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            color: #ccc;
+        }
+
+        .period-option input[type="radio"] {
+            accent-color: #FF9800;
+            cursor: pointer;
+        }
+
         .start-collection-btn {
             width: 100%;
             padding: 10px;
@@ -746,8 +767,28 @@
             <button class="panel-close-btn" onclick="document.getElementById('metrics-panel').style.display='none'; document.getElementById('showMetricsPanel').checked=false;">×</button>
         </h3>
 
-        <div class="metrics-info">
-            <p id="metrics-info-text">Collecte ISL + Ground Stations sur 24h, échantillonnage toutes les <span id="sampling-interval-value">20</span> secondes.</p>
+        <div class="metrics-period-selector">
+            <label class="period-option">
+                <input type="radio" name="collection-period" id="period-terrestrial" value="terrestrial" checked>
+                Période terrestre (24h)
+            </label>
+            <label class="period-option">
+                <input type="radio" name="collection-period" id="period-orbital" value="orbital">
+                Période orbitale (~90 min)
+            </label>
+        </div>
+
+        <div class="control-group" style="margin-top: 10px; margin-bottom: 10px;">
+            <label>
+                Pas d'échantillonnage (s)
+                <span class="value-display" id="sampling-interval-value">20</span>
+            </label>
+            <input type="range" id="sampling-interval" min="5" max="300" value="20" step="5">
+            <div style="display:flex; justify-content:space-between; font-size:10px; color:#666; margin-top:2px;">
+                <span>5s</span>
+                <span id="sampling-samples-estimate">~285 échantillons/lien</span>
+                <span>300s</span>
+            </div>
         </div>
 
         <button id="start-collection-btn" class="start-collection-btn">Démarrer la collecte</button>

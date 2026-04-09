@@ -9,28 +9,24 @@ let links = [];
 let neighborLinks = [];
 let currentOrbitalPeriod = 0;
 
-// Helper pour nettoyer les objets de la scène
+// Supprimer des objets Three.js de la scène
 export function clearSceneObjects(scene, objects) {
     objects.forEach(obj => scene.remove(obj));
     objects.length = 0;
 }
 
-// Re-export des fonctions orbitales depuis utils/orbital-math.js
 export { calculateAngularVelocity, calculateOrbitalVelocity, calculateOrbitalPeriod };
 
-// Calculer la position d'un satellite en coordonnées cartésiennes
+// Calculer la position 3D d'un satellite depuis ses paramètres orbitaux
 export function getSatellitePosition(altitude, inclination, raan, trueAnomaly) {
     const radius = (EARTH_RADIUS + altitude) * SCALE;
     const incRad = inclination * Math.PI / 180;
     const raanRad = raan * Math.PI / 180;
     const taRad = trueAnomaly * Math.PI / 180;
 
-    // Position dans le plan orbital
     const x_orbital = radius * Math.cos(taRad);
     const z_orbital = radius * Math.sin(taRad);
 
-    // Rotation par l'inclinaison et le RAAN
-    // Dans Three.js, Y est l'axe vertical (pôles)
     const x = x_orbital * Math.cos(raanRad) - z_orbital * Math.cos(incRad) * Math.sin(raanRad);
     const y = z_orbital * Math.sin(incRad);
     const z = x_orbital * Math.sin(raanRad) + z_orbital * Math.cos(incRad) * Math.cos(raanRad);
@@ -38,63 +34,48 @@ export function getSatellitePosition(altitude, inclination, raan, trueAnomaly) {
     return new THREE.Vector3(x, y, z);
 }
 
-// Créer une orbite
+// Créer une orbite elliptique visible
 function createOrbit(altitude, inclination, raan, color = 0x444444) {
     const points = [];
     const numPoints = 128;
 
     for (let i = 0; i <= numPoints; i++) {
         const trueAnomaly = (i / numPoints) * 360;
-        const pos = getSatellitePosition(altitude, inclination, raan, trueAnomaly);
-        points.push(pos);
+        points.push(getSatellitePosition(altitude, inclination, raan, trueAnomaly));
     }
 
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const material = new THREE.LineBasicMaterial({
-        color: color,
-        transparent: true,
-        opacity: 0.4
-    });
+    const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.4 });
 
     return new THREE.Line(geometry, material);
 }
 
 // Générer une constellation Walker Delta
 export function createConstellation(scene, params) {
-    // Nettoyer les satellites et orbites existants
     clearSceneObjects(scene, satellites);
     clearSceneObjects(scene, orbits);
     clearSceneObjects(scene, links);
 
     const { altitude, inclination, numSats, numPlanes, phase, satelliteSize } = params;
     const satsPerPlane = Math.floor(numSats / numPlanes);
-    const extraSats = numSats % numPlanes; // Satellites restants à distribuer
+    const extraSats = numSats % numPlanes;
 
-    // Calculer les paramètres orbitaux réalistes
     const angularVelocity = calculateAngularVelocity(altitude);
     const orbitalVelocity = calculateOrbitalVelocity(altitude);
     const orbitalPeriod = calculateOrbitalPeriod(altitude);
     currentOrbitalPeriod = orbitalPeriod;
 
-    // Notation Walker Delta
-    const notation = `${numSats}/${numPlanes}/${phase}`;
-    document.getElementById('notation').textContent = notation;
+    document.getElementById('notation').textContent = `${numSats}/${numPlanes}/${phase}`;
     document.getElementById('satsPerPlane').textContent = `${satsPerPlane}${extraSats > 0 ? '-' + (satsPerPlane + 1) : ''}`;
     document.getElementById('orbitalRadius').textContent = (EARTH_RADIUS + altitude).toFixed(0);
     document.getElementById('orbitalVelocity').textContent = orbitalVelocity.toFixed(2);
     document.getElementById('orbitalPeriod').textContent = orbitalPeriod.toFixed(1);
 
-    // Créer les satellites
     for (let p = 0; p < numPlanes; p++) {
-        const raan = (p * 360) / numPlanes; // Right Ascension of Ascending Node
-
-        // Nombre de satellites dans ce plan (les premiers plans ont un satellite supplémentaire)
+        const raan = (p * 360) / numPlanes;
         const satsInThisPlane = satsPerPlane + (p < extraSats ? 1 : 0);
-
-        // Couleur pour ce plan orbital
         const planeColor = PLANE_COLORS[p % PLANE_COLORS.length];
 
-        // Créer l'orbite si demandé
         if (params.showOrbits) {
             const orbit = createOrbit(altitude, inclination, raan, planeColor);
             scene.add(orbit);
@@ -102,10 +83,8 @@ export function createConstellation(scene, params) {
         }
 
         for (let s = 0; s < satsInThisPlane; s++) {
-            // Calcul de l'anomalie vraie avec le phasage Walker Delta
             const trueAnomaly = (s * 360) / satsInThisPlane + (p * phase * 360) / numSats;
 
-            // Créer le satellite avec la couleur du plan
             const satGeometry = new THREE.SphereGeometry(satelliteSize || 0.3, 16, 16);
             const satMaterial = new THREE.MeshPhongMaterial({
                 color: planeColor,
@@ -115,29 +94,22 @@ export function createConstellation(scene, params) {
             });
             const satellite = new THREE.Mesh(satGeometry, satMaterial);
 
-            // Stocker les paramètres orbitaux pour l'animation
             satellite.userData = {
                 altitude,
                 inclination,
                 raan,
                 trueAnomaly,
-                angularVelocity: angularVelocity, // vitesse angulaire réaliste en rad/s
-                index: satellites.length // Index du satellite dans le tableau
+                angularVelocity,
+                index: satellites.length
             };
 
-            // Positionner le satellite
-            const pos = getSatellitePosition(altitude, inclination, raan, trueAnomaly);
-            satellite.position.copy(pos);
-
+            satellite.position.copy(getSatellitePosition(altitude, inclination, raan, trueAnomaly));
             scene.add(satellite);
             satellites.push(satellite);
         }
     }
 
-    // Créer les liens ISL si demandé
-    if (params.showLinks) {
-        createISL(scene, params);
-    }
+    if (params.showLinks) createISL(scene, params);
 
     return satellites;
 }
@@ -150,53 +122,33 @@ export function createISL(scene, params) {
     const satsPerPlane = Math.floor(numSats / numPlanes);
     const extraSats = numSats % numPlanes;
 
-    // Calculer les infos de chaque plan
     const planeInfo = [];
     let satIndexOffset = 0;
     for (let p = 0; p < numPlanes; p++) {
         const satsInThisPlane = satsPerPlane + (p < extraSats ? 1 : 0);
-        planeInfo.push({
-            startIndex: satIndexOffset,
-            count: satsInThisPlane
-        });
+        planeInfo.push({ startIndex: satIndexOffset, count: satsInThisPlane });
         satIndexOffset += satsInThisPlane;
     }
 
-    // Créer les liens intra-plan pour tous les plans
     for (let p = 0; p < numPlanes; p++) {
         const currentPlane = planeInfo[p];
-
-        // Liens intra-plan (satellite suivant dans le même plan)
         for (let s = 0; s < currentPlane.count; s++) {
             const satIndex = currentPlane.startIndex + s;
             const nextSatIndex = currentPlane.startIndex + ((s + 1) % currentPlane.count);
-
             const link = createLink(satellites[satIndex], satellites[nextSatIndex], LINK_COLORS.ISL_INTRA_PLANE);
             scene.add(link);
             links.push(link);
         }
     }
 
-    // Créer les liens inter-plan (gauche-droite entre plans adjacents)
-    // Le décalage optimal est déterminé par le phasage Walker Delta
-    // phase représente le décalage en nombre de satellites entre plans adjacents
     const phaseOffset = Math.round(phase);
-
     for (let p = 0; p < numPlanes; p++) {
         const currentPlane = planeInfo[p];
-        const nextPlane = planeInfo[(p + 1) % numPlanes]; // Utiliser modulo pour boucler
-
-        // Connecter chaque satellite au satellite le plus proche dans le plan adjacent
-        // en tenant compte du phasage Walker
+        const nextPlane = planeInfo[(p + 1) % numPlanes];
         for (let s = 0; s < currentPlane.count; s++) {
             const satIndex = currentPlane.startIndex + s;
-
-            // Calculer l'index du satellite adjacent en tenant compte du phasage
-            // Utiliser -phaseOffset pour trouver le plus proche
-            // On utilise modulo pour boucler dans le plan (ajouter count avant le modulo pour gérer les négatifs)
             const adjacentSatIndexInPlane = (s - phaseOffset + nextPlane.count) % nextPlane.count;
             const adjacentSatIndex = nextPlane.startIndex + adjacentSatIndexInPlane;
-
             const link = createLink(satellites[satIndex], satellites[adjacentSatIndex], LINK_COLORS.ISL_INTER_PLANE);
             scene.add(link);
             links.push(link);
@@ -204,38 +156,22 @@ export function createISL(scene, params) {
     }
 }
 
-// Créer un lien entre deux satellites
+// Créer un lien visuel entre deux satellites
 function createLink(sat1, sat2, color) {
     const points = [sat1.position, sat2.position];
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const material = new THREE.LineBasicMaterial({
-        color: color,
-        transparent: true,
-        opacity: 0.3
-    });
+    const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.3 });
     const link = new THREE.Line(geometry, material);
-
-    // Stocker les références aux satellites pour la mise à jour
-    link.userData = {
-        sat1: sat1,
-        sat2: sat2
-    };
-
+    link.userData = { sat1, sat2 };
     return link;
 }
 
-// La fonction checkLineOfSight est maintenant importée depuis utils/raytracing.js
-
-// Créer les liens voisins (basés sur visibilité instantanée)
+// Créer les liens voisins basés sur la visibilité instantanée
 export function createNeighborLinks(scene) {
-    // Nettoyer les anciens liens
     clearSceneObjects(scene, neighborLinks);
-
-    // Vérifier toutes les paires de satellites
     for (let i = 0; i < satellites.length; i++) {
         for (let j = i + 1; j < satellites.length; j++) {
             if (checkLineOfSight(satellites[i], satellites[j])) {
-                // Couleur pour les liens voisins
                 const link = createLink(satellites[i], satellites[j], LINK_COLORS.NEIGHBOR);
                 scene.add(link);
                 neighborLinks.push(link);
@@ -244,12 +180,9 @@ export function createNeighborLinks(scene) {
     }
 }
 
-// Mettre à jour les positions des liens voisins
+// Recalculer les liens voisins à chaque frame
 export function updateNeighborLinks(scene) {
-    // Nettoyer et recréer les liens (peut être optimisé plus tard)
     clearSceneObjects(scene, neighborLinks);
-
-    // Recréer les liens avec positions actuelles
     for (let i = 0; i < satellites.length; i++) {
         for (let j = i + 1; j < satellites.length; j++) {
             if (checkLineOfSight(satellites[i], satellites[j])) {
@@ -261,60 +194,31 @@ export function updateNeighborLinks(scene) {
     }
 }
 
-// Mettre à jour les positions des satellites (animation)
+// Mettre à jour les positions des satellites et des liens ISL
 export function updateSatellites(deltaTime, speedFactor) {
-    // Appliquer le facteur d'accélération
     const acceleratedDeltaTime = deltaTime * speedFactor;
 
     satellites.forEach(satellite => {
         const { altitude, inclination, raan, angularVelocity } = satellite.userData;
-
-        // Mettre à jour l'anomalie vraie
-        // angularVelocity est en rad/s, on convertit en degrés/s puis multiplie par deltaTime
         const angularVelocityDegPerSec = angularVelocity * (180 / Math.PI);
         satellite.userData.trueAnomaly += angularVelocityDegPerSec * acceleratedDeltaTime;
 
-        if (satellite.userData.trueAnomaly > 360) {
-            satellite.userData.trueAnomaly -= 360;
-        }
+        if (satellite.userData.trueAnomaly > 360) satellite.userData.trueAnomaly -= 360;
 
-        // Calculer la nouvelle position
-        const pos = getSatellitePosition(altitude, inclination, raan, satellite.userData.trueAnomaly);
-        satellite.position.copy(pos);
+        satellite.position.copy(getSatellitePosition(altitude, inclination, raan, satellite.userData.trueAnomaly));
     });
 
-    // Mettre à jour les liens ISL
     links.forEach(link => {
         const { sat1, sat2 } = link.userData;
         const positions = link.geometry.attributes.position.array;
-
-        positions[0] = sat1.position.x;
-        positions[1] = sat1.position.y;
-        positions[2] = sat1.position.z;
-        positions[3] = sat2.position.x;
-        positions[4] = sat2.position.y;
-        positions[5] = sat2.position.z;
+        positions[0] = sat1.position.x; positions[1] = sat1.position.y; positions[2] = sat1.position.z;
+        positions[3] = sat2.position.x; positions[4] = sat2.position.y; positions[5] = sat2.position.z;
         link.geometry.attributes.position.needsUpdate = true;
     });
 }
 
-// Getters pour accéder aux satellites/orbites/liens depuis d'autres modules
-export function getSatellites() {
-    return satellites;
-}
-
-export function getOrbits() {
-    return orbits;
-}
-
-export function getLinks() {
-    return links;
-}
-
-export function getNeighborLinks() {
-    return neighborLinks;
-}
-
-export function getOrbitalPeriod() {
-    return currentOrbitalPeriod;
-}
+export function getSatellites() { return satellites; }
+export function getOrbits() { return orbits; }
+export function getLinks() { return links; }
+export function getNeighborLinks() { return neighborLinks; }
+export function getOrbitalPeriod() { return currentOrbitalPeriod; }

@@ -33,26 +33,14 @@ simulation/
 
 ## Running in the Browser
 
-No build step required — three.js is loaded via CDN (`importmap` in `index.html`).
-
-**Option 1 — local HTTP server (recommended):**
-
 ```bash
-# Python
 python3 -m http.server 8080
-# then open http://localhost:8080/index.html
+# then open http://localhost:8080
 
-# Node
-npx serve .
 ```
-
-**Option 2 — direct file open:**
-Some browsers block ES module imports from `file://`. Use the HTTP server option if you see import errors.
-
 ## Verifying the Simulation (Node.js tests)
 
-`verify_simulation.js` is a standalone test suite that validates orbital mechanics, satellite positions, ground station distances, and line-of-sight — entirely from mathematical first principles, without any test framework dependency.
-
+`verify_simulation.js` is a standalone test suite.
 Node.js is required (v20+) because it needs to resolve ES module imports locally (the browser uses CDN; Node.js does not).
 
 ```bash
@@ -67,7 +55,7 @@ The output shows pass/fail counts per block. On failure, the expected vs. actual
 
 > `package.json` and `package-lock.json` exist solely for this — they declare `"type": "module"` (so Node treats `.js` files as ES modules) and the `three` dependency. They are **not** needed to run the browser simulation.
 
-## Collecting Data for Emulation
+## Notes
 
 1. Set constellation parameters (altitude, inclination, number of satellites/planes) in the UI.
 2. Place ground stations on the globe (or import a CSV).
