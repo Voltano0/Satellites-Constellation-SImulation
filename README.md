@@ -63,7 +63,6 @@ The sampling interval is configurable from 5 s to 300 s. The default of **20 s**
 |---|---|
 | Angular displacement | ~1.5° per sample at 550 km — captures the inter-plane ISL distance variation (~30% amplitude over one orbit) |
 | Sample count | ~285 samples/link per orbit → sufficient fidelity, manageable file size |
-| Nyquist | ISL distance varies at 1 cycle/orbit (~0.185 mHz). 20 s yields ~270 samples/orbit, 135× the signal frequency — well above the Nyquist threshold |
 | GS handover | Handover events typically last 30–120 s; 20 s captures them unambiguously |
 
 For a **terrestrial period (24h)** collection, 20 s produces ~4,320 samples per link, which can result in very large files. Using **60 s** (1,440 samples/link) or **120 s** (720 samples/link) is recommended depending on the required precision.
