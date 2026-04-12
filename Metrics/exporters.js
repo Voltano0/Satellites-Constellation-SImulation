@@ -17,7 +17,7 @@ export function exportToJSON(contactMetrics) {
         metadata: { exportDate: new Date().toISOString(), format: 'json', version: '1.0' },
         contacts: { history: contactMetrics.getAllContacts(), stats: contactMetrics.getStats() }
     };
-    return JSON.stringify(data, null, 2);
+    return JSON.stringify(data);
 }
 
 // Exporter les contacts au format CSV
@@ -86,7 +86,7 @@ export function exportForMininet(contactMetrics, constellation, orbitalPeriod) {
         statistics: contactMetrics.getStats()
     };
 
-    return JSON.stringify(data, null, 2);
+    return JSON.stringify(data);
 }
 
 // Télécharger l'export Mininet contact plan
@@ -113,7 +113,7 @@ export function exportISLAverageForMininet(islMetrics, constellation, orbitalPer
         statistics: islMetrics.getGlobalStats()
     };
 
-    return JSON.stringify(data, null, 2);
+    return JSON.stringify(data);
 }
 
 // Exporter les timeseries ISL au format Mininet
@@ -130,11 +130,16 @@ export function exportISLTimeSeriesForMininet(islMetrics, constellation, orbital
         topology: {
             nodes: Array.from({length: constellation.numSats}, (_, i) => ({ id: i, type: 'satellite', plane: Math.floor(i * constellation.numPlanes / constellation.numSats) }))
         },
-        islLinks: samples.map(pair => ({ satA: pair.satA, satB: pair.satB, type: pair.type, timeSeries: pair.samples.map(s => ({ timestamp: s.timestamp, distance_km: s.distance_km, latency_ms: s.latency_ms })), bandwidth_mbps: 1000 })),
+        islLinks: samples.map(pair => {
+            if (pair.type === 'intra-plane') {
+                return { satA: pair.satA, satB: pair.satB, type: pair.type, distance_km: +pair.samples[0].distance_km.toFixed(3), latency_ms: +pair.samples[0].latency_ms.toFixed(3) };
+            }
+            return { satA: pair.satA, satB: pair.satB, type: pair.type, timeSeries: pair.samples.map(s => [s.timestamp, +s.distance_km.toFixed(3), +s.latency_ms.toFixed(3)]) };
+        }),
         statistics: islMetrics.getGlobalStats()
     };
 
-    return JSON.stringify(data, null, 2);
+    return JSON.stringify(data);
 }
 
 // Télécharger l'export ISL Mininet (average ou timeseries)
@@ -156,7 +161,7 @@ export function exportISLToJSON(islMetrics) {
         statistics: islMetrics.computeStats(),
         globalStats: islMetrics.getGlobalStats()
     };
-    return JSON.stringify(data, null, 2);
+    return JSON.stringify(data);
 }
 
 // Télécharger les données ISL brutes en JSON
@@ -247,9 +252,10 @@ export function exportISLGSTimeSeriesForMininet(islMetrics, gsMetrics, constella
         },
         islLinks: islSamples.map(pair => {
             if (pair.type === 'intra-plane') {
-                return { satA: pair.satA, satB: pair.satB, type: pair.type, distance_km: pair.samples[0].distance_km, latency_ms: pair.samples[0].latency_ms };
+                return { satA: pair.satA, satB: pair.satB, type: pair.type, distance_km: +pair.samples[0].distance_km.toFixed(3), latency_ms: +pair.samples[0].latency_ms.toFixed(3) };
             }
-            return { satA: pair.satA, satB: pair.satB, type: pair.type, timeSeries: pair.samples.map(s => ({ t: s.timestamp, distance_km: s.distance_km, latency_ms: s.latency_ms })) };
+            // Format columnar: [t, distance_km, latency_ms] par pas — 3x plus compact qu'un tableau d'objets
+            return { satA: pair.satA, satB: pair.satB, type: pair.type, timeSeries: pair.samples.map(s => [s.timestamp, +s.distance_km.toFixed(3), +s.latency_ms.toFixed(3)]) };
         }),
         statistics: islMetrics.getGlobalStats()
     };
@@ -263,12 +269,13 @@ export function exportISLGSTimeSeriesForMininet(islMetrics, gsMetrics, constella
                 else if (e.action === 'disconnect') { event.satId = e.satId; }
                 return event;
             }),
-            timeline: gsTimeline.map(entry => ({ gsId: entry.gsId, satId: entry.satId, startTime: entry.startTime, endTime: entry.endTime, samples: entry.samples.map(s => ({ t: s.t, latency_ms: s.latency_ms })) }))
+            // Format columnar: [t, latency_ms] — 2x plus compact qu'un tableau d'objets
+            timeline: gsTimeline.map(entry => ({ gsId: entry.gsId, satId: entry.satId, startTime: entry.startTime, endTime: entry.endTime, samples: entry.samples.map(s => [s.t, +s.latency_ms.toFixed(3)]) }))
         };
         data.gsStatistics = gsMetrics.getGlobalStats();
     }
 
-    return JSON.stringify(data, null, 2);
+    return JSON.stringify(data);
 }
 
 // Télécharger l'export ISL+GS Mininet timeseries
