@@ -1,3 +1,19 @@
+// Retourner un timestamp ISO local (avec offset timezone) plutôt qu'UTC
+function localISOString() {
+    const d = new Date();
+    const off = -d.getTimezoneOffset();
+    const sign = off >= 0 ? '+' : '-';
+    const pad = n => String(Math.abs(n)).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T` +
+           `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}` +
+           `${sign}${pad(Math.floor(Math.abs(off)/60))}:${pad(Math.abs(off)%60)}`;
+}
+
+// Timestamp pour noms de fichiers (remplace : et . par -)
+function localTimestamp() {
+    return localISOString().replace(/[:.]/g, '-').slice(0, -6);
+}
+
 // Télécharger un fichier côté client
 function downloadFile(content, filename, mimeType) {
     const blob = new Blob([content], { type: mimeType });
@@ -14,7 +30,7 @@ function downloadFile(content, filename, mimeType) {
 // Exporter les contacts au format JSON
 export function exportToJSON(contactMetrics) {
     const data = {
-        metadata: { exportDate: new Date().toISOString(), format: 'json', version: '1.0' },
+        metadata: { exportDate: localISOString(), format: 'json', version: '1.0' },
         contacts: { history: contactMetrics.getAllContacts(), stats: contactMetrics.getStats() }
     };
     return JSON.stringify(data);
@@ -35,13 +51,13 @@ function exportContactsCSV(contactMetrics, orbitalPeriod) {
 
 // Télécharger tous les contacts en CSV
 export function exportAllToCSV(contactMetrics, orbitalPeriod) {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const timestamp = localTimestamp();
     downloadFile(exportContactsCSV(contactMetrics, orbitalPeriod), `contacts_${timestamp}.csv`, 'text/csv');
 }
 
 // Télécharger les contacts en JSON
 export function downloadJSON(contactMetrics) {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const timestamp = localTimestamp();
     downloadFile(exportToJSON(contactMetrics), `contacts_${timestamp}.json`, 'application/json');
 }
 
@@ -60,7 +76,7 @@ export function exportSummary(contactMetrics) {
 
 // Télécharger le résumé texte
 export function downloadSummary(contactMetrics) {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const timestamp = localTimestamp();
     downloadFile(exportSummary(contactMetrics), `summary_${timestamp}.txt`, 'text/plain');
 }
 
@@ -70,7 +86,7 @@ export function exportForMininet(contactMetrics, constellation, orbitalPeriod) {
 
     const data = {
         metadata: {
-            exportDate: new Date().toISOString(),
+            exportDate: localISOString(),
             format: 'mininet-contact-plan', version: '2.0',
             constellation: { totalSatellites: constellation.numSats, planes: constellation.numPlanes, phase: constellation.phase, altitude_km: constellation.altitude, inclination_deg: constellation.inclination },
             simulation: { orbitalPeriod_min: orbitalPeriod, samplingInterval_s: 20, duration_s: contacts.length > 0 ? contacts[contacts.length - 1].endTime : 0, numPeriods: 5 }
@@ -91,7 +107,7 @@ export function exportForMininet(contactMetrics, constellation, orbitalPeriod) {
 
 // Télécharger l'export Mininet contact plan
 export function downloadMininet(contactMetrics, constellation, orbitalPeriod) {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const timestamp = localTimestamp();
     downloadFile(exportForMininet(contactMetrics, constellation, orbitalPeriod), `mininet_${timestamp}.json`, 'application/json');
 }
 
@@ -101,7 +117,7 @@ export function exportISLAverageForMininet(islMetrics, constellation, orbitalPer
 
     const data = {
         metadata: {
-            exportDate: new Date().toISOString(),
+            exportDate: localISOString(),
             format: 'mininet-isl-average', version: '3.0', mode: 'average',
             constellation: { totalSatellites: constellation.numSats, planes: constellation.numPlanes, phase: constellation.phase, altitude_km: constellation.altitude, inclination_deg: constellation.inclination },
             simulation: { orbitalPeriod_min: orbitalPeriod, samplingInterval_s: 20, numPeriods: 1, duration_s: orbitalPeriod * 60 }
@@ -122,7 +138,7 @@ export function exportISLTimeSeriesForMininet(islMetrics, constellation, orbital
 
     const data = {
         metadata: {
-            exportDate: new Date().toISOString(),
+            exportDate: localISOString(),
             format: 'mininet-isl-timeseries', version: '3.0', mode: 'timeseries',
             constellation: { totalSatellites: constellation.numSats, planes: constellation.numPlanes, phase: constellation.phase, altitude_km: constellation.altitude, inclination_deg: constellation.inclination },
             simulation: { orbitalPeriod_min: orbitalPeriod, samplingInterval_s: 20, numPeriods: 1, duration_s: orbitalPeriod * 60 }
@@ -148,14 +164,14 @@ export function downloadISLMininet(islMetrics, constellation, orbitalPeriod, mod
         ? exportISLAverageForMininet(islMetrics, constellation, orbitalPeriod)
         : exportISLTimeSeriesForMininet(islMetrics, constellation, orbitalPeriod);
 
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const timestamp = localTimestamp();
     downloadFile(json, `mininet_isl_${mode}_${timestamp}.json`, 'application/json');
 }
 
 // Exporter les données ISL brutes en JSON
 export function exportISLToJSON(islMetrics) {
     const data = {
-        metadata: { exportDate: new Date().toISOString(), format: 'isl-json', version: '1.0' },
+        metadata: { exportDate: localISOString(), format: 'isl-json', version: '1.0' },
         islPairs: islMetrics.islPairs,
         samples: islMetrics.getAllSamples(),
         statistics: islMetrics.computeStats(),
@@ -166,7 +182,7 @@ export function exportISLToJSON(islMetrics) {
 
 // Télécharger les données ISL brutes en JSON
 export function downloadISLJSON(islMetrics) {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const timestamp = localTimestamp();
     downloadFile(exportISLToJSON(islMetrics), `isl_data_${timestamp}.json`, 'application/json');
 }
 
@@ -186,7 +202,7 @@ export function exportISLToCSV(islMetrics, orbitalPeriod) {
 
 // Télécharger les statistiques ISL en CSV
 export function downloadISLCSV(islMetrics, orbitalPeriod) {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const timestamp = localTimestamp();
     downloadFile(exportISLToCSV(islMetrics, orbitalPeriod), `isl_stats_${timestamp}.csv`, 'text/csv');
 }
 
@@ -223,7 +239,7 @@ export function exportISLSummary(islMetrics, constellation, orbitalPeriod) {
 
 // Télécharger le résumé ISL en texte
 export function downloadISLSummary(islMetrics, constellation, orbitalPeriod) {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const timestamp = localTimestamp();
     downloadFile(exportISLSummary(islMetrics, constellation, orbitalPeriod), `isl_summary_${timestamp}.txt`, 'text/plain');
 }
 
@@ -237,7 +253,7 @@ export function exportISLGSTimeSeriesForMininet(islMetrics, gsMetrics, constella
 
     const data = {
         metadata: {
-            exportDate: new Date().toISOString(),
+            exportDate: localISOString(),
             format: 'mininet-isl-gs-timeseries', version: '4.0', mode: 'timeseries',
             hasGroundStations: hasGS,
             constellation: { totalSatellites: constellation.numSats, planes: constellation.numPlanes, phase: constellation.phase, altitude_km: constellation.altitude, inclination_deg: constellation.inclination },
@@ -281,7 +297,7 @@ export function exportISLGSTimeSeriesForMininet(islMetrics, gsMetrics, constella
 // Télécharger l'export ISL+GS Mininet timeseries
 export function downloadISLGSMininet(islMetrics, gsMetrics, constellation, orbitalPeriod, groundStations = [], collectionDuration = null, numPeriods = 1, samplingInterval = 20) {
     const json = exportISLGSTimeSeriesForMininet(islMetrics, gsMetrics, constellation, orbitalPeriod, groundStations, collectionDuration, numPeriods, samplingInterval);
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const timestamp = localTimestamp();
     const filename = groundStations.length > 0
         ? `mininet_isl_gs_timeseries_${timestamp}.json`
         : `mininet_isl_timeseries_${timestamp}.json`;

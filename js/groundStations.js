@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { EARTH_RADIUS, SCALE, EARTH_ROTATION_RATE, GROUND_STATION_SCOPE_ALTITUDE, GROUND_STATION_CONE_ANGLE, LINK_COLORS } from '../utils/constants.js';
-import { checkLineOfSight } from '../utils/raytracing.js';
-import { clearSceneObjects } from './constellation.js';
+import { clearSceneObjects, getSatellitePosition } from './constellation.js';
 
 let groundStations = [];
 let groundStationMeshes = [];
@@ -152,70 +151,93 @@ function calculateElevation(stationPosition, satellitePosition) {
     return Math.acos(cosAngle) * 180 / Math.PI - 90;
 }
 
-// Trouver le satellite avec la meilleure élévation pour une station
-function findBestSatellite(stationPosition, satellites, minElevation = 25) {
-    let bestSatellite = null;
-    let bestElevation = minElevation;
+// Prédire combien de secondes un satellite restera au-dessus de minElevation
+// Tient compte de la rotation terrestre future pour la position de la station
+function predictTimeAboveElevation(stationLat, stationLon, satellite, minElevation, maxSeconds = 600, stepSeconds = 30) {
+    const { altitude, inclination, raan, trueAnomaly, angularVelocity } = satellite.userData;
+    const angVelDegSec = angularVelocity * (180 / Math.PI);
 
-    const stationObj = { position: stationPosition.clone() };
+    for (let t = stepSeconds; t <= maxSeconds; t += stepSeconds) {
+        const futureAnomaly = trueAnomaly + angVelDegSec * t;
+        const futurePos = getSatellitePosition(altitude, inclination, raan, futureAnomaly);
+        // Position future de la station avec la rotation terrestre à T+t
+        const futureStationPos = latLonToCartesian(stationLat, stationLon, 0, earthRotationAngle + EARTH_ROTATION_RATE * t);
+        if (calculateElevation(futureStationPos, futurePos) < minElevation) {
+            return t - stepSeconds; // dernière étape où il était encore visible
+        }
+    }
+    return maxSeconds;
+}
+
+// Trouver le satellite qui restera visible le plus longtemps (≥ minElevation actuellement)
+function findLongestSatellite(stationPosition, stationLat, stationLon, satellites, minElevation = 10) {
+    let bestIndex = null;
+    let bestDuration = -1;
 
     satellites.forEach((satellite, index) => {
-        if (checkLineOfSight(stationObj, satellite)) {
-            const elevation = calculateElevation(stationPosition, satellite.position);
-            if (elevation > bestElevation) { bestElevation = elevation; bestSatellite = index; }
-        }
+        const elevation = calculateElevation(stationPosition, satellite.position);
+        if (elevation < minElevation) return;
+        const duration = predictTimeAboveElevation(stationLat, stationLon, satellite, minElevation);
+        if (duration > bestDuration) { bestDuration = duration; bestIndex = index; }
     });
 
-    return { satelliteIndex: bestSatellite, elevation: bestElevation };
+    return { satelliteIndex: bestIndex, duration: bestDuration };
 }
 
 // Mettre à jour les liens dynamiques entre stations et satellites (avec handover)
 export function updateGroundSatelliteLinks(scene, satellites, currentTime = 0) {
     clearSceneObjects(scene, groundSatelliteLinks);
 
-    const MIN_ELEVATION = 10;
-    const HANDOVER_HYSTERESIS = 15;
-    const MIN_HANDOVER_INTERVAL = 10;
+    const MIN_ELEVATION = 10;             // En dessous : connexion perdue
+    const FORCED_HANDOVER_INTERVAL = 30;  // Délai min entre deux HOs forcés (satellite perdu)
 
     groundStationMeshes.forEach(stationMesh => {
         const stationId = stationMesh.userData.stationId;
         const stationPosition = stationMesh.children[0].position;
 
         if (!stationTrackingState[stationId]) {
-            stationTrackingState[stationId] = { trackedSatelliteIndex: null, lastHandoverTime: -MIN_HANDOVER_INTERVAL };
+            stationTrackingState[stationId] = { trackedSatelliteIndex: null, lastHandoverTime: -FORCED_HANDOVER_INTERVAL };
         }
 
+        const stationLat = stationMesh.userData.lat;
+        const stationLon = stationMesh.userData.lon;
         const trackingState = stationTrackingState[stationId];
         const trackedIndex = trackingState.trackedSatelliteIndex;
-        const stationObj = { position: stationPosition.clone() };
 
         let currentSatValid = false;
         let currentElevation = 0;
 
         if (trackedIndex !== null && satellites[trackedIndex]) {
-            if (checkLineOfSight(stationObj, satellites[trackedIndex])) {
-                currentElevation = calculateElevation(stationPosition, satellites[trackedIndex].position);
-                currentSatValid = currentElevation >= MIN_ELEVATION;
-            }
+            // Pour GS→satellite, l'élévation suffit (checkLineOfSight est conçu pour ISL
+            // et retourne toujours false quand l'origine est sur la surface terrestre)
+            currentElevation = calculateElevation(stationPosition, satellites[trackedIndex].position);
+            currentSatValid = currentElevation >= MIN_ELEVATION;
         }
 
-        const best = findBestSatellite(stationPosition, satellites, MIN_ELEVATION);
         let targetSatellite = trackedIndex;
         const timeSinceLastHandover = currentTime - trackingState.lastHandoverTime;
+        const canForceHandover = timeSinceLastHandover >= FORCED_HANDOVER_INTERVAL;
 
-        if (!currentSatValid || trackedIndex === null) {
+        if (trackedIndex === null) {
+            // Première connexion : satellite qui durera le plus longtemps
+            const best = findLongestSatellite(stationPosition, stationLat, stationLon, satellites, MIN_ELEVATION);
             targetSatellite = best.satelliteIndex;
-            if (best.satelliteIndex !== null && best.satelliteIndex !== trackedIndex) {
+            if (best.satelliteIndex !== null) {
                 trackingState.lastHandoverTime = currentTime;
-                console.log(`Station ${stationId}: Handover to sat${best.satelliteIndex} (elev: ${best.elevation.toFixed(1)}°)`);
+                console.log(`Station ${stationId}: Connexion initiale → sat${best.satelliteIndex} (durée prédite: ${best.duration}s)`);
             }
-        } else if (best.satelliteIndex !== null && best.satelliteIndex !== trackedIndex) {
-            if (best.elevation - currentElevation > HANDOVER_HYSTERESIS && timeSinceLastHandover >= MIN_HANDOVER_INTERVAL) {
-                targetSatellite = best.satelliteIndex;
-                trackingState.lastHandoverTime = currentTime;
-                console.log(`Station ${stationId}: Handover sat${trackedIndex}→sat${best.satelliteIndex} (${currentElevation.toFixed(1)}°→${best.elevation.toFixed(1)}°)`);
+        } else if (!currentSatValid) {
+            // Satellite actuel perdu (<MIN_ELEVATION) : switch vers celui qui durera le plus longtemps
+            if (canForceHandover) {
+                const best = findLongestSatellite(stationPosition, stationLat, stationLon, satellites, MIN_ELEVATION);
+                if (best.satelliteIndex !== null) {
+                    targetSatellite = best.satelliteIndex;
+                    trackingState.lastHandoverTime = currentTime;
+                    console.log(`Station ${stationId}: Handover sat${trackedIndex}→sat${best.satelliteIndex} (durée prédite: ${best.duration}s)`);
+                }
             }
         }
+        // Sinon (currentSatValid) : stay-connected jusqu'à la perte du satellite
 
         trackingState.trackedSatelliteIndex = targetSatellite;
 
